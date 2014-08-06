@@ -59,15 +59,14 @@ install_sig_handlers() {
 }
 
 watch() {
-	inotifywait -m ${OPTIONS} -e ${EVENTS} ${TARGET} | while read ev
+	inotifywait -m ${OPTIONS} -e ${EVENTS} ${TARGET} | while read dir events file
 	do
-		event=(${ev})
 		rc=$?
 		if [ $rc -ne 0 ]
 		then
 			exit $rc
 		fi
-		echo -e "${EVENTS}\t${event[${IDX_DIR}]}${event[${IDX_FILE}]}" > ${OUT}
+		echo -e "${events}\t${dir}${file}" > ${OUT}
 	done
 }
 
