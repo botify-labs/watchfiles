@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+usage() {
+	echo "
+Usage: $0 PATH [NAMED_PIPE]
+
+Recursiverly watches for events on files in PATH and writes the path of the
+files either on stdout or in NAMED_PIPE pipe."
+}
+
+
+if [ $# -eq 0 ]
+then
+	usage
+	exit 1
+fi
+
+declare -r TARGET="$1"
+if [ ${1} ] && [ ${2} ]
+then
+	declare -r OUT="${2}"
+	mkfifo ${OUT}
+	# There is no lock to ensure an exclusive write access to the pipe.
+	# See the PIPE_BUF section in pipe(7) for atomic writes.
+else
+	declare -r OUT='/dev/stdout'
+fi
+
+set -o nounset
+set -o pipefail
+
+declare -r OPTIONS='-q -r'
+declare -r EVENTS='close_write'
+
+declare -ri IDX_DIR=0
+declare -ri IDX_EVENTS=1
+declare -ri IDX_FILE=2
+declare -a event
+
+cleanup() {
+	if [ -p ${OUT} ]
+	then
+		rm -f ${OUT}
+	fi
+}
+
+terminate() {
+	cleanup
+	exit 1
+}
+
+install_sig_handlers() {
+	# The process does not catch signals when launched with nohup and seems
+	# to be waiting in an inotify syscall. When a event occurs, it exits
+	# from the syscall and catches the signal.
+	# Interesting comment:
+	# https://github.com/rvoicilas/inotify-tools/issues/5#issuecomment-17756009
+	trap terminate SIGINT
+	trap terminate SIGTERM
+}
+
+watch() {
+	inotifywait -m ${OPTIONS} -e ${EVENTS} ${TARGET} | while read ev
+	do
+		event=(${ev})
+		rc=$?
+		if [ $rc -ne 0 ]
+		then
+			exit $rc
+		fi
+		echo -e "${EVENTS}\t${event[${IDX_DIR}]}${event[${IDX_FILE}]}" > ${OUT}
+	done
+}
+
+install_sig_handlers
+watch
+cleanup
